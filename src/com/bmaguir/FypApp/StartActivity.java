@@ -1,6 +1,7 @@
 package com.bmaguir.FypApp;
 
 import android.app.Activity;
+import android.content.Context;
 import android.content.Intent;
 import android.graphics.PixelFormat;
 import android.os.Bundle;
@@ -22,10 +23,13 @@ public class StartActivity extends Activity {
     SpeechRecognizer mSpeechRecognizer;
     Intent mSpeechRecognizerIntent;
     boolean mIsListening;
+    public static Context context;
+    private String direction;
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        context = this;
         getWindow().setFormat(PixelFormat.RGB_565);
         setContentView(R.layout.start_activity);
 
@@ -53,6 +57,13 @@ public class StartActivity extends Activity {
         mSpeechRecognizer.setRecognitionListener(listener);
     }
 
+    public String startFunc(){
+        //Log.i("test","-----------------test");
+        String temp = direction;
+        direction = "null";
+        return temp;
+    }
+
     @Override
     public void onWindowFocusChanged(boolean hasFocus)
     {
@@ -62,22 +73,25 @@ public class StartActivity extends Activity {
 
 
     public void leftClick(View v){
-        Toast.makeText(this, "LEFT", Toast.LENGTH_LONG).show();
+        //Toast.makeText(this, "LEFT", Toast.LENGTH_SHORT).show();
+        direction = "left";
     }
 
     public void rightClick(View v){
-        Toast.makeText(this, "RIGHT", Toast.LENGTH_LONG).show();
+        //Toast.makeText(this, "RIGHT", Toast.LENGTH_SHORT).show();
+        direction = "right";
     }
 
     public void backClick(View v){
-        Toast.makeText(this, "BACK", Toast.LENGTH_LONG).show();
+        //Toast.makeText(this, "BACK", Toast.LENGTH_SHORT).show();
+        direction = "back";
     }
 
     public void forwardClick(View v){
-        Toast.makeText(this, "FORWARD", Toast.LENGTH_LONG).show();
+        //Toast.makeText(this, "FORWARD", Toast.LENGTH_SHORT).show();
+        direction = "forward";
     }
     public void speakClick(View v){
-        Toast.makeText(this, "SPEAK", Toast.LENGTH_LONG).show();
         if (!mIsListening)
         {
             mSpeechRecognizer.startListening(mSpeechRecognizerIntent);
@@ -128,6 +142,7 @@ public class StartActivity extends Activity {
         public void onReadyForSpeech(Bundle params)
         {
             Log.d("User_Tag", "onReadyForSpeech"); //$NON-NLS-1$
+            Toast.makeText(getApplicationContext(), "SPEAK", Toast.LENGTH_LONG).show();
         }
 
         @Override
