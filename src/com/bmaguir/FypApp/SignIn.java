@@ -5,13 +5,18 @@ import android.content.Intent;
 import android.content.IntentSender;
 import android.os.Bundle;
 import android.util.Log;
+import android.view.Menu;
+import android.view.MenuInflater;
 import android.view.View;
+import android.view.WindowManager;
 import android.widget.Button;
 import android.widget.Toast;
 
 import com.google.android.gms.common.ConnectionResult;
 import com.google.android.gms.common.api.GoogleApiClient;
 import com.google.android.gms.games.Games;
+import com.google.android.gms.games.GamesActivityResultCodes;
+import com.google.android.gms.games.multiplayer.Multiplayer;
 
 /**
  * Created by Brian on 19/02/2015.
@@ -20,7 +25,7 @@ public class SignIn extends Activity  implements
             GoogleApiClient.ConnectionCallbacks,
             GoogleApiClient.OnConnectionFailedListener {
 
-    private static final String TAG = "GooglePlayServicesActivity";
+    private static final String TAG = "debugSignInActivity";
 
     private static final String KEY_IN_RESOLUTION = "is_in_resolution";
 
@@ -28,6 +33,7 @@ public class SignIn extends Activity  implements
      * Request code for auto Google Play Services error resolution.
      */
     protected static final int REQUEST_CODE_RESOLUTION = 1;
+    private static final int START_ACTIVITY_REQUEST = 22;
 
     /**
      * Google API client.
@@ -40,6 +46,7 @@ public class SignIn extends Activity  implements
      */
     private boolean mIsInResolution;
 
+    private boolean mSignInAutomatically = true;
 
     /**
      * Called when the activity is starting. Restores the activity state.
@@ -53,6 +60,14 @@ public class SignIn extends Activity  implements
             mIsInResolution = savedInstanceState.getBoolean(KEY_IN_RESOLUTION, false);
         }
         Log.d(TAG, "app created");
+    }
+
+
+    @Override
+    public boolean onCreateOptionsMenu(Menu menu) {
+        MenuInflater inflater = getMenuInflater();
+        inflater.inflate(R.menu.menu, menu);
+        return true;
     }
 
     public void signIn(View v) {
@@ -71,8 +86,10 @@ public class SignIn extends Activity  implements
     }
 
     public void play(View v){
-        Intent intent = new Intent(this, StartActivity.class);
-        startActivity(intent);
+        if(mGoogleApiClient.isConnected()) {
+            Intent intent = new Intent(this, StartActivity.class);
+            startActivity(intent);
+        }
     }
 
     /**
@@ -94,7 +111,9 @@ public class SignIn extends Activity  implements
                     .addOnConnectionFailedListener(this)
                     .build();
         }
-        mGoogleApiClient.connect();
+        if(mSignInAutomatically) {
+            mGoogleApiClient.connect();
+        }
     }
 
     /**
@@ -125,10 +144,34 @@ public class SignIn extends Activity  implements
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
         Log.d(TAG, "on activity result");
-        if (requestCode == REQUEST_CODE_RESOLUTION) {
-            Log.d(TAG, "on activity result retry connection");
-            retryConnecting();
-            return;
+        switch (requestCode) {
+            case (REQUEST_CODE_RESOLUTION) :
+            {
+                Log.d(TAG, "on activity result retry connection");
+                retryConnecting();
+                break;
+            }
+            case (START_ACTIVITY_REQUEST):
+            {
+                switch (resultCode){
+                    case(0):
+                        finish();
+                        break;
+                    case(1):
+                        if(mGoogleApiClient.isConnected()) {
+                            mGoogleApiClient.disconnect();
+                        }
+                        mSignInAutomatically = false;
+                        Button b = (Button) findViewById(R.id.signIn);
+                        b.setVisibility(View.VISIBLE);
+                        b = (Button) findViewById(R.id.play);
+                        b.setVisibility(View.GONE);
+                        break;
+                    case(2):
+                        if(!mGoogleApiClient.isConnected())
+                            mGoogleApiClient.connect();
+                }
+            }
         }
     }
 
@@ -146,9 +189,15 @@ public class SignIn extends Activity  implements
     public void onConnected(Bundle connectionHint) {
         Log.i(TAG, "GoogleApiClient connected");
         Button b = (Button) findViewById(R.id.signIn);
-        b.setVisibility(View.INVISIBLE);
+        b.setVisibility(View.GONE);
         Button p = (Button) findViewById(R.id.play);
         p.setVisibility(View.VISIBLE);
+
+        //start game activity
+        if(mSignInAutomatically) {
+            Intent intent = new Intent(this, StartActivity.class);
+            startActivityForResult(intent, START_ACTIVITY_REQUEST);
+        }
     }
 
     /**

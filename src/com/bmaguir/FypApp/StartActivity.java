@@ -1,7 +1,9 @@
 package com.bmaguir.FypApp;
 
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.content.Context;
+import android.content.DialogInterface;
 import android.content.Intent;
 import android.graphics.PixelFormat;
 import android.os.Bundle;
@@ -9,22 +11,59 @@ import android.speech.RecognitionListener;
 import android.speech.RecognizerIntent;
 import android.speech.SpeechRecognizer;
 import android.util.Log;
+import android.view.Menu;
+import android.view.MenuInflater;
+import android.view.MenuItem;
 import android.view.View;
+import android.view.WindowManager;
+import android.widget.Button;
 import android.widget.FrameLayout;
+import android.widget.TextView;
 import android.widget.Toast;
 
+import com.google.android.gms.common.ConnectionResult;
+import com.google.android.gms.common.api.GoogleApiClient;
+import com.google.android.gms.games.Games;
+import com.google.android.gms.games.GamesActivityResultCodes;
+import com.google.android.gms.games.GamesStatusCodes;
+import com.google.android.gms.games.multiplayer.Multiplayer;
+import com.google.android.gms.games.multiplayer.realtime.RealTimeMessage;
+import com.google.android.gms.games.multiplayer.realtime.RealTimeMessageReceivedListener;
+import com.google.android.gms.games.multiplayer.realtime.Room;
+import com.google.android.gms.games.multiplayer.realtime.RoomConfig;
+import com.google.android.gms.games.multiplayer.realtime.RoomStatusUpdateListener;
+import com.google.android.gms.games.multiplayer.realtime.RoomUpdateListener;
 import com.unity3d.player.UnityPlayer;
 
 import java.util.ArrayList;
+import java.util.List;
+import java.util.Random;
 
-public class StartActivity extends Activity {
+public class StartActivity extends Activity implements
+        GoogleApiClient.ConnectionCallbacks,
+        GoogleApiClient.OnConnectionFailedListener,
+        RoomUpdateListener,
+        RealTimeMessageReceivedListener,
+        RoomStatusUpdateListener
+{
     private static final String TAG = "debugStartActivity";
     private UnityPlayer m_UnityPlayer;
     SpeechRecognizer mSpeechRecognizer;
     Intent mSpeechRecognizerIntent;
     boolean mIsListening;
     public static Context context;
-    private String direction;
+    private GoogleApiClient mGoogleApiClient;
+    private String mRoomId;
+
+    private String mPlayerType;
+
+    //room identifier
+    final static int RC_WAITING_ROOM = 10002;
+
+    int MAX_PLAYERS = 1;
+
+    private Room mRoom;
+    private String mMyId;
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
@@ -44,7 +83,8 @@ public class StartActivity extends Activity {
         FrameLayout layout = (FrameLayout) findViewById(R.id.frameLayout);
         FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT);
         layout.addView(m_UnityPlayer, 0, lp);
-        m_UnityPlayer.resume();
+
+        //m_UnityPlayer.resume();
 
         //Speech recognition code
         mSpeechRecognizer = SpeechRecognizer.createSpeechRecognizer(this);
@@ -57,11 +97,47 @@ public class StartActivity extends Activity {
         mSpeechRecognizer.setRecognitionListener(listener);
     }
 
+    @Override
+    public boolean onCreateOptionsMenu(Menu menu) {
+        MenuInflater inflater = getMenuInflater();
+        inflater.inflate(R.menu.menu, menu);
+        return true;
+    }
+
+    @Override
+    public boolean onOptionsItemSelected(MenuItem item) {
+        // Handle item selection
+        switch (item.getItemId()) {
+            case R.id.menuSignOut:
+                if(mGoogleApiClient != null && mGoogleApiClient.isConnected()) {
+                    mGoogleApiClient.disconnect();
+                }
+                setResult(1);
+                finish();
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    //function called by Unity gamemanager
     public String startFunc(){
         //Log.i("test","-----------------test");
-        String temp = direction;
-        direction = "null";
-        return temp;
+        return mPlayerType;
+    }
+
+    public int[] getMapInfo(){
+        int size = 3;
+        int materialsLength = 5;
+        Random rand = new Random();
+        int[] mapIndex = new int [size*size+2];
+        for(int i=0;i<size*size;i++){
+           mapIndex[i] =  rand.nextInt()%materialsLength;
+        }
+        mapIndex[size*size] = rand.nextInt()%size;
+        mapIndex[size*size+1] = rand.nextInt()%size;
+
+        return mapIndex;
     }
 
     @Override
@@ -72,30 +148,277 @@ public class StartActivity extends Activity {
     }
 
 
-    public void leftClick(View v){
-        //Toast.makeText(this, "LEFT", Toast.LENGTH_SHORT).show();
-        direction = "left";
-    }
-
-    public void rightClick(View v){
-        //Toast.makeText(this, "RIGHT", Toast.LENGTH_SHORT).show();
-        direction = "right";
-    }
-
-    public void backClick(View v){
-        //Toast.makeText(this, "BACK", Toast.LENGTH_SHORT).show();
-        direction = "back";
-    }
-
-    public void forwardClick(View v){
-        //Toast.makeText(this, "FORWARD", Toast.LENGTH_SHORT).show();
-        direction = "forward";
-    }
     public void speakClick(View v){
         if (!mIsListening)
         {
             mSpeechRecognizer.startListening(mSpeechRecognizerIntent);
         }
+    }
+
+    /**
+     * Called when the Activity is made visible.
+     * A connection to Play Services need to be initiated as
+     * soon as the activity is visible. Registers {@code ConnectionCallbacks}
+     * and {@code OnConnectionFailedListener} on the
+     * activities itself.
+     */
+    @Override
+    protected void onStart() {
+        super.onStart();
+        if (mGoogleApiClient == null) {
+            mGoogleApiClient = new GoogleApiClient.Builder(this)
+                    .addApi(Games.API)
+                    .addScope(Games.SCOPE_GAMES)
+                            // Optionally, add additional APIs and scopes if required.
+                    .addConnectionCallbacks(this)
+                    .addOnConnectionFailedListener(this)
+                    .build();
+        }
+        mGoogleApiClient.connect();
+    }
+
+    /**
+     * Called when activity gets invisible. Connection to Play Services needs to
+     * be disconnected as soon as an activity is invisible.
+     */
+    @Override
+    protected void onStop() {
+        if (mGoogleApiClient != null) {
+            mGoogleApiClient.disconnect();
+        }
+        super.onStop();
+    }
+
+    public void playClick(View v){
+
+        Log.d(TAG, "starting game");
+
+        /*
+        // auto-match criteria to invite one random automatch opponent.
+        // You can also specify more opponents (up to 3).
+        Bundle am = RoomConfig.createAutoMatchCriteria(1, 1, 0);
+
+        // build the room config:
+        RoomConfig.Builder roomConfigBuilder = makeBasicRoomConfigBuilder();
+        roomConfigBuilder.setAutoMatchCriteria(am);
+        RoomConfig roomConfig = roomConfigBuilder.build();
+
+        // create room:
+        Games.RealTimeMultiplayer.create(mGoogleApiClient, roomConfig);
+
+        // prevent screen from sleeping during handshake
+        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+
+        */
+
+        //remove play button
+        Button b = (Button) findViewById(R.id.play);
+        b.setVisibility(View.GONE);
+        // go to game screen
+
+        //debug temp ////////
+        mPlayerType = "player1";
+        m_UnityPlayer.resume();
+    }
+
+    private RoomConfig.Builder makeBasicRoomConfigBuilder() {
+        RoomConfig.Builder builder = RoomConfig.builder(this);
+        builder.setMessageReceivedListener(this);
+        builder.setRoomStatusUpdateListener(this);
+        builder.setMessageReceivedListener(this);
+
+        return builder;
+    }
+
+    @Override
+    public void onConnected(Bundle bundle) {
+        Button b = (Button) findViewById(R.id.play);
+        b.setVisibility(View.VISIBLE);
+    }
+
+
+    @Override
+    public void onConnectionSuspended(int i) {
+        if (!mGoogleApiClient.isConnecting()) {
+            mGoogleApiClient.connect();
+        }
+    }
+
+    @Override
+    public void onConnectionFailed(ConnectionResult connectionResult) {
+        Toast.makeText(this, "Connection Failure",Toast.LENGTH_SHORT).show();
+        setResult(2);
+        finish();
+    }
+
+    @Override
+    public void onBackPressed(){
+        new AlertDialog.Builder(this)
+                .setTitle("Really Exit?")
+                .setMessage("Are you sure you want to exit?")
+                .setNegativeButton(android.R.string.no, null)
+                .setPositiveButton(android.R.string.yes, new DialogInterface.OnClickListener() {
+
+                    public void onClick(DialogInterface arg0, int arg1) {
+                        setResult(0);
+                        finish();
+                    }
+                }).create().show();
+    }
+
+    @Override
+    public void onRealTimeMessageReceived(RealTimeMessage realTimeMessage) {
+
+    }
+
+    @Override
+    public void onRoomConnecting(Room room) {
+
+    }
+
+    @Override
+    public void onRoomAutoMatching(Room room) {
+
+    }
+
+    @Override
+    public void onPeerInvitedToRoom(Room room, List<String> strings) {
+
+    }
+
+    @Override
+    public void onPeerDeclined(Room room, List<String> strings) {
+
+    }
+
+    @Override
+    public void onPeerJoined(Room room, List<String> strings) {
+
+    }
+
+    @Override
+    public void onPeerLeft(Room room, List<String> strings) {
+
+    }
+
+    @Override
+    public void onConnectedToRoom(Room room) {
+
+    }
+
+    @Override
+    public void onDisconnectedFromRoom(Room room) {
+
+    }
+
+    @Override
+    public void onPeersConnected(Room room, List<String> strings) {
+
+    }
+
+    @Override
+    public void onPeersDisconnected(Room room, List<String> strings) {
+
+    }
+
+    @Override
+    public void onP2PConnected(String s) {
+
+    }
+
+    @Override
+    public void onP2PDisconnected(String s) {
+
+    }
+
+    @Override
+    public void onRoomCreated(int statusCode, Room room) {
+        Log.d(TAG, "room created");
+        if (statusCode != GamesStatusCodes.STATUS_OK) {
+            // display error
+            Log.d(TAG, "status code " +statusCode);
+            return;
+        }
+
+        mRoomId = room.getRoomId();
+
+        // get waiting room intent
+        Intent i = Games.RealTimeMultiplayer.getWaitingRoomIntent(mGoogleApiClient, room, MAX_PLAYERS);
+        startActivityForResult(i, RC_WAITING_ROOM);
+    }
+
+    @Override
+    public void onJoinedRoom(int statusCode, Room room) {
+        if (statusCode != GamesStatusCodes.STATUS_OK) {
+            // display error
+            return;
+        }
+
+        mRoomId = room.getRoomId();
+
+        mRoom = room;
+
+        // get waiting room intent
+        Intent i = Games.RealTimeMultiplayer.getWaitingRoomIntent(mGoogleApiClient, room, MAX_PLAYERS);
+        startActivityForResult(i, RC_WAITING_ROOM);
+    }
+
+    @Override
+    public void onLeftRoom(int i, String s) {
+        Log.d(TAG, "left Room");
+    }
+
+    @Override
+    public void onRoomConnected(int statusCode, Room room) {
+
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == RC_WAITING_ROOM) {
+            if (resultCode == Activity.RESULT_OK) {
+                mRoom = data.getExtras().getParcelable(Multiplayer.EXTRA_ROOM);
+                mMyId = mRoom.getParticipantId(Games.Players.getCurrentPlayerId(mGoogleApiClient));
+
+                startGame();
+            }
+            else if (resultCode == Activity.RESULT_CANCELED) {
+                // Waiting room was dismissed with the back button. The meaning of this
+                // action is up to the game. You may choose to leave the room and cancel the
+                // match, or do something else like minimize the waiting room and
+                // continue to connect in the background.
+
+                // in this example, we take the simple approach and just leave the room:
+                Games.RealTimeMultiplayer.leave(mGoogleApiClient, null, mRoomId);
+                getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+            }
+            else if (resultCode == GamesActivityResultCodes.RESULT_LEFT_ROOM && data != null) {
+                // player wants to leave the room.
+                Games.RealTimeMultiplayer.leave(mGoogleApiClient, null, mRoomId);
+                getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+            }
+        }
+    }
+
+    private void startGame() {
+
+        ArrayList<String> p = mRoom.getParticipantIds();
+        for(int i=0; i<p.size(); i++){
+            if( p.get(i).compareTo(mMyId) < 0)
+            {
+                mPlayerType = "player1";
+                Log.d(TAG, "player 1 chosen");
+                Toast.makeText(this, "player1", Toast.LENGTH_SHORT);
+            }
+            else if(p.get(i).compareTo(mMyId) != 0)
+            {
+                mPlayerType = "player2";
+                Log.d(TAG, "player 2 chosen");
+            }
+        }
+
+        m_UnityPlayer.resume();
     }
 
     protected class SpeechRecognitionListener implements RecognitionListener
@@ -151,7 +474,12 @@ public class StartActivity extends Activity {
             Log.d(TAG, "onResults"); //$NON-NLS-1$
             ArrayList<String> matches = results.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
             String best = matches.get(0);
-            Toast.makeText(getApplicationContext(),"Results = " + best, Toast.LENGTH_LONG).show();
+            //Toast.makeText(getApplicationContext(),"Results = " + best, Toast.LENGTH_LONG).show();
+
+            TextView textView = (TextView)findViewById(R.id.textView);
+            String cur = (String)textView.getText();
+            textView.setText(best +"\n" +cur);
+
             // matches are the return values of speech recognition engine
             // Use these values for whatever you wish to do
         }
