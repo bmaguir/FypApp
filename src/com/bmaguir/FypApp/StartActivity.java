@@ -389,7 +389,9 @@ public class StartActivity extends Activity implements
                 zCo = temp[1];
             break;
             case(3):    //speech message
-
+                TextView textView = (TextView)findViewById(R.id.textView);
+                String cur = (String)textView.getText();
+                textView.setText("Them: " + message.toString() +"\n" +cur);
                 break;
         }
     }
@@ -602,10 +604,23 @@ public class StartActivity extends Activity implements
 
             TextView textView = (TextView)findViewById(R.id.textView);
             String cur = (String)textView.getText();
-            textView.setText(best +"\n" +cur);
+            textView.setText("You: " + best +"\n" +cur);
 
-            // matches are the return values of speech recognition engine
-            // Use these values for whatever you wish to do
+            byte[] message = best.getBytes();
+            byte[] header = Arrays.copyOf(message, message.length + 1);
+            header[message.length] = 3;
+
+
+            if(mRoom != null) { //if connected to a room
+
+                for (Participant p : mRoom.getParticipants()) {
+                    if (!p.getParticipantId().equals(mMyId)) {
+                        Games.RealTimeMultiplayer.sendReliableMessage(mGoogleApiClient, null, header,
+                                mRoomId, p.getParticipantId());
+                        Log.d(TAG, "sent message");
+                    }
+                }
+            }
         }
 
         @Override
