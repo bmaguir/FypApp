@@ -27,6 +27,7 @@ import com.google.android.gms.games.Games;
 import com.google.android.gms.games.GamesActivityResultCodes;
 import com.google.android.gms.games.GamesStatusCodes;
 import com.google.android.gms.games.multiplayer.Multiplayer;
+import com.google.android.gms.games.multiplayer.Participant;
 import com.google.android.gms.games.multiplayer.realtime.RealTimeMessage;
 import com.google.android.gms.games.multiplayer.realtime.RealTimeMessageReceivedListener;
 import com.google.android.gms.games.multiplayer.realtime.Room;
@@ -35,7 +36,11 @@ import com.google.android.gms.games.multiplayer.realtime.RoomStatusUpdateListene
 import com.google.android.gms.games.multiplayer.realtime.RoomUpdateListener;
 import com.unity3d.player.UnityPlayer;
 
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
+import java.nio.IntBuffer;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Random;
 
@@ -57,6 +62,8 @@ public class StartActivity extends Activity implements
 
     private String mPlayerType;
 
+    private int[] MapInfo;
+
     //room identifier
     final static int RC_WAITING_ROOM = 10002;
 
@@ -64,6 +71,8 @@ public class StartActivity extends Activity implements
 
     private Room mRoom;
     private String mMyId;
+
+    int xCo, zCo;
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
@@ -95,6 +104,15 @@ public class StartActivity extends Activity implements
                 this.getPackageName());
         SpeechRecognitionListener listener = new SpeechRecognitionListener();
         mSpeechRecognizer.setRecognitionListener(listener);
+
+        mPlayerType = "player2";
+    }
+
+    // Quit Unity
+    @Override protected void onDestroy ()
+    {
+        m_UnityPlayer.quit();
+        super.onDestroy();
     }
 
     @Override
@@ -115,6 +133,10 @@ public class StartActivity extends Activity implements
                 setResult(1);
                 finish();
                 return true;
+            case R.id.menuPlay:
+                setMapInfo();
+                mPlayerType = "player1";
+                m_UnityPlayer.resume();
             default:
                 return false;
         }
@@ -126,18 +148,76 @@ public class StartActivity extends Activity implements
         return mPlayerType;
     }
 
-    public int[] getMapInfo(){
-        int size = 3;
-        int materialsLength = 5;
+    //sets random values for the map, textures and key loc etc...
+    private void setMapInfo(){
+        int size = 5;
+        int materialsLength = 4;
         Random rand = new Random();
         int[] mapIndex = new int [size*size+2];
         for(int i=0;i<size*size;i++){
-           mapIndex[i] =  rand.nextInt()%materialsLength;
+            mapIndex[i] =  rand.nextInt(materialsLength);
         }
-        mapIndex[size*size] = rand.nextInt()%size;
-        mapIndex[size*size+1] = rand.nextInt()%size;
+        mapIndex[size*size] = rand.nextInt(size);
+        mapIndex[size*size+1] = rand.nextInt(size);
 
-        return mapIndex;
+/*
+        //debug
+        for(int i=0;i<mapIndex.length; i++){
+            mapIndex[i] = 3;
+        }
+*/
+        ByteBuffer byteBuffer = ByteBuffer.allocate(mapIndex.length * 4);
+        IntBuffer intBuffer = byteBuffer.asIntBuffer();
+        intBuffer.put(mapIndex);
+        byte[] message = byteBuffer.array();
+        byte[] header = Arrays.copyOf(message, message.length + 1);
+        header[message.length] = 1;
+
+
+        if(mRoom != null) { //if connected to a room
+
+            for (Participant p : mRoom.getParticipants()) {
+                if (!p.getParticipantId().equals(mMyId)) {
+                    Games.RealTimeMultiplayer.sendReliableMessage(mGoogleApiClient, null, header,
+                            mRoomId, p.getParticipantId());
+                    Log.d(TAG, "sent mapInfo");
+                }
+            }
+        }
+
+        MapInfo = mapIndex;
+    }
+
+    //transfers mapinfo to unity code
+    public int[] getMapInfo(){
+
+
+        return MapInfo;
+    }
+
+    public void setPlayerCo(int x, int z){
+
+        byte[] x_bytes =  ByteBuffer.allocate(4).order(ByteOrder.BIG_ENDIAN).putInt(x).array();
+        byte[] z_bytes =  ByteBuffer.allocate(4).order(ByteOrder.BIG_ENDIAN).putInt(z).array();
+
+        byte[] message = new byte[9];
+
+        for(int i=0;i<4;i++){
+            message[i] = x_bytes[i];
+        }
+        for(int i=4;i<8;i++){
+            message[i] = z_bytes[i-4];
+        }
+        message[8] = 2;
+
+        if(mRoom != null) { //if connected to a room
+            Games.RealTimeMultiplayer.sendUnreliableMessageToOthers(mGoogleApiClient, message, mRoomId);
+        }
+    }
+
+    public int[] getPlayerCo(){
+        int [] cor = {xCo, zCo};
+        return cor;
     }
 
     @Override
@@ -193,7 +273,7 @@ public class StartActivity extends Activity implements
 
         Log.d(TAG, "starting game");
 
-        /*
+
         // auto-match criteria to invite one random automatch opponent.
         // You can also specify more opponents (up to 3).
         Bundle am = RoomConfig.createAutoMatchCriteria(1, 1, 0);
@@ -209,16 +289,20 @@ public class StartActivity extends Activity implements
         // prevent screen from sleeping during handshake
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
 
-        */
+
 
         //remove play button
         Button b = (Button) findViewById(R.id.play);
         b.setVisibility(View.GONE);
         // go to game screen
 
+        /*
         //debug temp ////////
+
         mPlayerType = "player1";
         m_UnityPlayer.resume();
+
+        */
     }
 
     private RoomConfig.Builder makeBasicRoomConfigBuilder() {
@@ -269,6 +353,45 @@ public class StartActivity extends Activity implements
     @Override
     public void onRealTimeMessageReceived(RealTimeMessage realTimeMessage) {
 
+        byte[] array = realTimeMessage.getMessageData();
+        byte [] message = Arrays.copyOf(array, array.length -1);
+        byte header = array[array.length-1];
+
+        switch(header){
+            case(1): //map info
+            if (mPlayerType.compareTo("player2") == 0) {
+                IntBuffer intBuf =
+                        ByteBuffer.wrap(message)
+                                .order(ByteOrder.BIG_ENDIAN)
+                                .asIntBuffer();
+                int[] temp = new int[intBuf.remaining()];
+                intBuf.get(temp);
+
+                for (int i = 0; i < temp.length; i++) {
+                    // temp[i] = array[i];
+                    Log.d(TAG, Integer.toString(temp[i]));
+                }
+                MapInfo = temp;
+                //start game;
+                Log.d(TAG, "recieved message, starting game");
+                m_UnityPlayer.resume();
+            }
+            break;
+            case(2):    //player position
+                IntBuffer intBuf =
+                        ByteBuffer.wrap(message)
+                                .order(ByteOrder.BIG_ENDIAN)
+                                .asIntBuffer();
+                int[] temp = new int[intBuf.remaining()];
+                intBuf.get(temp);
+
+                xCo = temp[0];
+                zCo = temp[1];
+            break;
+            case(3):    //speech message
+
+                break;
+        }
     }
 
     @Override
@@ -408,17 +531,18 @@ public class StartActivity extends Activity implements
             if( p.get(i).compareTo(mMyId) < 0)
             {
                 mPlayerType = "player1";
-                Log.d(TAG, "player 1 chosen");
-                Toast.makeText(this, "player1", Toast.LENGTH_SHORT);
+                Log.d(TAG, "player 1 chosen, myId = " + mMyId + " otherId = " + p.get(i));
+                Toast.makeText(this, "player1", Toast.LENGTH_LONG).show();
+                setMapInfo();
+                m_UnityPlayer.resume();
             }
             else if(p.get(i).compareTo(mMyId) != 0)
             {
                 mPlayerType = "player2";
-                Log.d(TAG, "player 2 chosen");
+                Log.d(TAG, "player 2 chosen, myId = " + mMyId + " otherId = " + p.get(i));
+                Toast.makeText(this, "player2", Toast.LENGTH_LONG).show();
             }
         }
-
-        m_UnityPlayer.resume();
     }
 
     protected class SpeechRecognitionListener implements RecognitionListener
