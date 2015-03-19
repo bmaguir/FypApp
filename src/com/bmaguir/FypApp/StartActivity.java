@@ -220,6 +220,24 @@ public class StartActivity extends Activity implements
         return cor;
     }
 
+    public void finishGame(int score) {
+        byte[] message = ByteBuffer.allocate(4).order(ByteOrder.BIG_ENDIAN).putInt(score).array();
+        byte[] header = Arrays.copyOf(message, message.length + 1);
+        header[message.length] = 4;
+
+        if (mRoom != null) { //if connected to a room
+            for (Participant p : mRoom.getParticipants()) {
+                if (!p.getParticipantId().equals(mMyId)) {
+                    Games.RealTimeMultiplayer.sendReliableMessage(mGoogleApiClient, null, header,
+                            mRoomId, p.getParticipantId());
+                    Log.d(TAG, "sent end game");
+                }
+            }
+        }
+        m_UnityPlayer.pause();
+        Toast.makeText(this, "Level Completed in " + Integer.toString(score) + " seconds", Toast.LENGTH_LONG).show();
+    }
+
     @Override
     public void onWindowFocusChanged(boolean hasFocus)
     {
@@ -359,24 +377,24 @@ public class StartActivity extends Activity implements
 
         switch(header){
             case(1): //map info
-            if (mPlayerType.compareTo("player2") == 0) {
-                IntBuffer intBuf =
-                        ByteBuffer.wrap(message)
-                                .order(ByteOrder.BIG_ENDIAN)
-                                .asIntBuffer();
-                int[] temp = new int[intBuf.remaining()];
-                intBuf.get(temp);
+                if (mPlayerType.compareTo("player2") == 0) {
+                    IntBuffer intBuf =
+                            ByteBuffer.wrap(message)
+                                    .order(ByteOrder.BIG_ENDIAN)
+                                    .asIntBuffer();
+                    int[] temp = new int[intBuf.remaining()];
+                    intBuf.get(temp);
 
-                for (int i = 0; i < temp.length; i++) {
-                    // temp[i] = array[i];
-                    Log.d(TAG, Integer.toString(temp[i]));
+                    for (int i = 0; i < temp.length; i++) {
+                        // temp[i] = array[i];
+                        Log.d(TAG, Integer.toString(temp[i]));
+                    }
+                    MapInfo = temp;
+                    //start game;
+                    Log.d(TAG, "recieved message, starting game");
+                    m_UnityPlayer.resume();
                 }
-                MapInfo = temp;
-                //start game;
-                Log.d(TAG, "recieved message, starting game");
-                m_UnityPlayer.resume();
-            }
-            break;
+                break;
             case(2):    //player position
                 IntBuffer intBuf =
                         ByteBuffer.wrap(message)
@@ -387,11 +405,22 @@ public class StartActivity extends Activity implements
 
                 xCo = temp[0];
                 zCo = temp[1];
-            break;
+                break;
             case(3):    //speech message
                 TextView textView = (TextView)findViewById(R.id.textView);
                 String cur = (String)textView.getText();
                 textView.setText("Them: " + message.toString() +"\n" +cur);
+                break;
+            case(4):
+                intBuf = ByteBuffer.wrap(message)
+                                .order(ByteOrder.BIG_ENDIAN)
+                                .asIntBuffer();
+                temp = new int[intBuf.remaining()];
+                intBuf.get(temp);
+
+                int score = temp[0];
+                m_UnityPlayer.pause();
+                Toast.makeText(this, "Level Completed in " + Integer.toString(score) + " seconds", Toast.LENGTH_LONG).show();
                 break;
         }
     }
@@ -518,7 +547,7 @@ public class StartActivity extends Activity implements
                 Games.RealTimeMultiplayer.leave(mGoogleApiClient, null, mRoomId);
                 getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
             }
-            else if (resultCode == GamesActivityResultCodes.RESULT_LEFT_ROOM && data != null) {
+            else  {
                 // player wants to leave the room.
                 Games.RealTimeMultiplayer.leave(mGoogleApiClient, null, mRoomId);
                 getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
