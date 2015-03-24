@@ -6,6 +6,7 @@ import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
 import android.graphics.PixelFormat;
+import android.media.MediaPlayer;
 import android.os.Bundle;
 import android.speech.RecognitionListener;
 import android.speech.RecognizerIntent;
@@ -126,6 +127,21 @@ public class StartActivity extends Activity implements
     public boolean onOptionsItemSelected(MenuItem item) {
         // Handle item selection
         switch (item.getItemId()) {
+            case R.id.menuSignIn:
+                MediaPlayer mp;
+                mp = MediaPlayer.create(context, R.raw.blop);
+                mp.setOnCompletionListener(new MediaPlayer.OnCompletionListener() {
+
+                    @Override
+                    public void onCompletion(MediaPlayer mp) {
+                        // TODO Auto-generated method stub
+                        mp.reset();
+                        mp.release();
+                    }
+
+                });
+                mp.start();
+                return true;
             case R.id.menuSignOut:
                 if(mGoogleApiClient != null && mGoogleApiClient.isConnected()) {
                     mGoogleApiClient.disconnect();
@@ -137,6 +153,7 @@ public class StartActivity extends Activity implements
                 setMapInfo();
                 mPlayerType = "player1";
                 m_UnityPlayer.resume();
+                return true;
             default:
                 return false;
         }
@@ -422,6 +439,22 @@ public class StartActivity extends Activity implements
                 TextView textView = (TextView)findViewById(R.id.textView);
                 String cur = (String)textView.getText();
                 textView.setText("Them: " + new String(message) +"\n" +cur);
+
+                MediaPlayer mp;
+                mp = MediaPlayer.create(context, R.raw.blop);
+                mp.setOnCompletionListener(new MediaPlayer.OnCompletionListener() {
+
+                    @Override
+                    public void onCompletion(MediaPlayer mp) {
+                        // TODO Auto-generated method stub
+                        mp.reset();
+                        mp.release();
+                        mp=null;
+                    }
+
+                });
+                mp.start();
+
                 break;
             case(4):
                 intBuf = ByteBuffer.wrap(message)
