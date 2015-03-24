@@ -34,7 +34,8 @@
 
     <TextView
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
+        android:layout_height="0dp"
+        android:layout_weight="0.30"
         android:textAppearance="?android:attr/textAppearanceLarge"
         android:text="Speak Instructions...."
         android:id="@+id/textView" />

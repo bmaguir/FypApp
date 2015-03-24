@@ -152,13 +152,17 @@ public class StartActivity extends Activity implements
     private void setMapInfo(){
         int size = 5;
         int materialsLength = 4;
+        int statuesLength = 4;
         Random rand = new Random();
-        int[] mapIndex = new int [size*size+2];
+        int[] mapIndex = new int [size*size*2+2];
         for(int i=0;i<size*size;i++){
             mapIndex[i] =  rand.nextInt(materialsLength);
         }
-        mapIndex[size*size] = rand.nextInt(size);
-        mapIndex[size*size+1] = rand.nextInt(size);
+        for(int i=size*size;i<size*size*2;i++){
+            mapIndex[i] =  rand.nextInt(statuesLength);
+        }
+        mapIndex[size*size*2] = rand.nextInt(size);
+        mapIndex[size*size*2+1] = rand.nextInt(size);
 
 /*
         //debug
@@ -249,7 +253,15 @@ public class StartActivity extends Activity implements
     public void speakClick(View v){
         if (!mIsListening)
         {
+            Button b = (Button) findViewById(R.id.speak);
+            b.setText("One Moment");
+            mIsListening = true;
             mSpeechRecognizer.startListening(mSpeechRecognizerIntent);
+        }
+        else{
+            Button b = (Button) findViewById(R.id.speak);
+            b.setText("Press to Speak");
+            mSpeechRecognizer.stopListening();
         }
     }
 
@@ -409,7 +421,7 @@ public class StartActivity extends Activity implements
             case(3):    //speech message
                 TextView textView = (TextView)findViewById(R.id.textView);
                 String cur = (String)textView.getText();
-                textView.setText("Them: " + message.toString() +"\n" +cur);
+                textView.setText("Them: " + new String(message) +"\n" +cur);
                 break;
             case(4):
                 intBuf = ByteBuffer.wrap(message)
@@ -621,11 +633,18 @@ public class StartActivity extends Activity implements
         {
             Log.d("User_Tag", "onReadyForSpeech"); //$NON-NLS-1$
             Toast.makeText(getApplicationContext(), "SPEAK", Toast.LENGTH_LONG).show();
+            Button b = (Button) findViewById(R.id.speak);
+            b.setText("Send");
         }
 
         @Override
         public void onResults(Bundle results)
         {
+            mIsListening = false;
+
+            Button b = (Button) findViewById(R.id.speak);
+            b.setText("Press to Speak");
+
             Log.d(TAG, "onResults"); //$NON-NLS-1$
             ArrayList<String> matches = results.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
             String best = matches.get(0);
