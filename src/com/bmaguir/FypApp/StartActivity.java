@@ -169,7 +169,7 @@ public class StartActivity extends Activity implements
     private void setMapInfo(){
         int size = 5;
         int materialsLength = 4;
-        int statuesLength = 4;
+        int statuesLength = 5;
         Random rand = new Random();
         int[] mapIndex = new int [size*size*2+2];
         for(int i=0;i<size*size;i++){
